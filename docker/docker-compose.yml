@@ -3,7 +3,7 @@ version: '3'
 services:
 
   orion:
-    image: fiware/orion:${ORION_VERSION}
+    image: fiware/orion:${ORION_VERSION:-2.0.0}
     ports:
       - "1026:1026"
     command: -logLevel DEBUG -noCache -dbhost mongo
@@ -14,33 +14,31 @@ services:
       interval: 1m
       timeout: 10s
       retries: 3
-    networks:
-        - reportertests
-
-  mongo:
-    image: mongo:${MONGO_VERSION}
-    ports:
-      - "27017:27017"
-    networks:
-        - reportertests
 
   quantumleap:
-    build: ../../../
-    image: quantumleap
+    image: ${QL_IMAGE:-smartsdk/quantumleap}
     ports:
       - "8668:8668"
     depends_on:
+      - mongo
       - orion
       - crate
-    networks:
-        - reportertests
     environment:
+      - CRATE_HOST=${CRATE_HOST:-crate}
       - USE_GEOCODING=True
       - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - LOGLEVEL=DEBUG
 
+  mongo:
+    image: mongo:3.2.19
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+
   crate:
-    image: crate:${CRATE_VERSION}
+    image: crate:${CRATE_VERSION:-3.3.5}
     command: crate -Cauth.host_based.enabled=false
       -Ccluster.name=democluster -Chttp.cors.enabled=true -Chttp.cors.allow-origin="*"
     ports:
@@ -48,16 +46,31 @@ services:
       - "4200:4200"
       # Transport protocol
       - "4300:4300"
-    networks:
-        - reportertests
+    volumes:
+      - cratedata:/data
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_INSTALL_PLUGINS=crate-datasource,grafana-clock-panel,grafana-worldmap-panel
+    depends_on:
+      - crate
 
   redis:
-    image: redis:${REDIS_VERSION}
+    image: redis
     ports:
       - "6379:6379"
-    networks:
-        - reportertests
+    volumes:
+      - redisdata:/data
+
+volumes:
+  mongodata:
+  cratedata:
+  redisdata:
 
 networks:
-    reportertests:
-        driver: bridge
+    default:
+        driver_opts:
+            com.docker.network.driver.mtu: ${DOCKER_MTU:-1400}
